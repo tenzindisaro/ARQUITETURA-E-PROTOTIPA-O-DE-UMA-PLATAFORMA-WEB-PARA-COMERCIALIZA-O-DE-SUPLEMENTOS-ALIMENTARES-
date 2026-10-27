@@ -1,0 +1,55 @@
+# Sobe a loja inteira com um comando:
+#
+#   docker compose up --build
+#
+# A aplicação espera o banco ficar pronto, aplica as migrations, popula os dados
+# de demonstração (só na primeira vez) e sobe em http://localhost:3000.
+#
+# Para recomeçar do zero, apagando o banco:  docker compose down -v
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: supz-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: supz
+      POSTGRES_PASSWORD: supz
+      POSTGRES_DB: supz
+    ports:
+      # Exposto para permitir rodar a aplicação fora do container, em
+      # desenvolvimento (`npm run dev`).
+      - "5432:5432"
+    volumes:
+      - supz-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supz -d supz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: supz-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        # Só sobe depois que o Postgres aceita conexões.
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://supz:supz@db:5432/supz?schema=public"
+      # Segredo fixo de demonstração. Num ambiente real viria de fora do
+      # repositório, gerado com `openssl rand -base64 32`.
+      AUTH_SECRET: "supz-demo-secret-nao-usar-em-producao-0123456789="
+      AUTH_URL: "http://localhost:3000"
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      # As imagens enviadas pelo administrador sobrevivem a reinícios.
+      - supz-uploads:/app/public/uploads
+
+volumes:
+  supz-pgdata:
+  supz-uploads:
